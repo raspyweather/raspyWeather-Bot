@@ -1,11 +1,4 @@
-# Telegram Counter Bot
-This bot aims to be a simple counter bot to keep a counter in a group / private chat.  
-The uses are simply endless.  
-It's the second generation, innovation, it's absolutely amazing!
+# raspyWeather Bot
+This bot will send you the newest images.
 
-It is currently online on http://t.me/countrBot
-
-## Installation
-- copy the `config.js.sample` to `config.js` and enter your bot token
-- `npm install`
-- start the bot with the app.js (either use `node app.js` or use a manager like pm2)
+NOT 'seriously' ONLINE YET.
