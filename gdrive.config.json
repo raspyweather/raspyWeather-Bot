@@ -1,0 +1,14 @@
+{
+    "RestURL": "https://www.googleapis.com/drive/v3/files/",
+    "FileURL": "https://docs.google.com/uc?id=",
+    "Data": [
+        {
+            "key": "AIzaSyDcPAYckM8eq3NkntNijLzq_pI2p-n_-SA",
+            "folder": "0B-HW4voEJgOgamFpanhnVlVwRzA"
+        },
+        {
+            "key": "AIzaSyCaC82KAUysQ2FBgAo_Ks1kEg43SKv-3uE",
+            "folder": "0B3v6z-kU8mPpYVVoczI2NEhfMnM"
+        }
+    ]
+}

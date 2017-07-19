@@ -1,112 +1,116 @@
 const fs = require('fs');
-var usrFileName = "./users.json";
-
+const Imagery = require('./Imagery.js').Imagery;
+const usrFileName = "./users.json";
+const imageryCacheName = "./imagery.json";
 var users = {};
 var fileLocked = false;
 
 function loadUsers() {
     fs.readFile(usrFileName, (err, data) => {
         if (err) throw err;
+        if (data == "") {
+            return;
+        }
         users = JSON.parse(data);
     });
 }
-
 function saveUsers() {
-	if(!fileLocked){
-		fileLocked = true;
-		var json = JSON.stringify(users);
-		fs.writeFile(usrFileName, json, 'utf8', function (err) {
-			if (err) throw err;
-			fileLocked = false;
-		})
-	}
+    if (!fileLocked) {
+        fileLocked = true;
+        var json = JSON.stringify(users);
+        fs.writeFile(usrFileName, json, 'utf8', function (err) {
+            if (err) throw err;
+            fileLocked = false;
+        })
+    }
 }
-
+function loadImageryPromised() {
+    return new Promise((resolve, reject) => {
+        fs.readFile(imageryCacheName, (err, data) => {
+            if (err) {
+                reject(err);
+                console.log("ERR");
+                return;
+            }
+            resolve(new Imagery(data));
+            return;
+        });
+    });
+}
+function optionify(obj) {
+    let optionObj = {};
+    for (let key of Object.keys(obj)) {
+        optionObj[key] = {
+            value: obj[key]
+        };
+    }
+    return optionObj;
+}
+function saveImagery(imagery) {
+    if (!fileLocked) {
+        fileLocked = true;
+        fs.writeFile(imageryCacheName, JSON.stringify(imagery), 'utf8', function (err) {
+            if (err) throw err;
+            fileLocked = false;
+        })
+    }
+}
 function registerUser(msg) {
-    var uid = msg.chat.id;
-    var usr = {enabled: true, data: {from: msg.from, chat: msg.chat}};
-    users[uid] = usr;
+    let uid = msg.chat.id;
+    users[uid] = new user(uid, { from: msg.from, chat: msg.chat });
     saveUsers();
 }
-
 function getUser(uid) {
     return users[uid];
 }
-
 function getUserList() {
     return Object.keys(users);
 }
-
 function setMetaData(uid, key, val) {
     users[uid].data[key] = val;
     saveUsers();
 }
-
 function getMetaData(uid, key) {
     return users[uid].data[key];
 }
-
-function assertCounter(uid, id) {
-    if(users[uid]) {
-        if(users[uid].counter) {
-            if(users[uid].counter[id]) {
-                if("value" in users[uid].counter[id]) {
-                    return true;
-                }
-                else {
-                    users[uid].counter[id].value = 0;
-                }
-            }
-            else {
-                users[uid].counter[id] = {};
-                users[uid].counter[id].value = 0;
-                saveUsers();
-            }
-        }
-        else {
-            users[uid].counter = {};
-            if(users[uid].count && id == '0') {//old counter detected, migrate count
-                users[uid].counter[id] = {value: users[uid].count};
-                delete users[uid].count;
-            }
-            else {
-                users[uid].counter[id] = {};
-                users[uid].counter[id].value = 0;
-            }
-            saveUsers();
-        }
+function getSettings(uid) {
+    return users[uid].Settings;
+}
+function getSubscriptedUsers() {
+    return Object.keys(users).filter(uid => users[uid].Settings.autoSend).map(x => users[x]);
+}
+class Settings {
+    constructor() {
+        this.autoSend = false;
+        this.selectedModes = ["therm", "msa"];
     }
-    else {
-        //console.log("[ERROR] User ID", uid, "does not exist in database");
-        var usr = {enabled: true, data: {from: undefined, chat: undefined, error: "user was not initialized properly"}, counter: {"0": {"value": 1}}};
-        users[uid] = usr;
-        saveUsers();
+    assert() {
+        /* */
     }
 }
-
-function setCounter(uid, id, val) {
-    assertCounter(uid, id);
-    users[uid].counter[id].value = val;
-    saveUsers();
-}
-
-function getCounter(uid, id) {
-    assertCounter(uid, id);
-    return users[uid].counter[id].value;
-}
-
-function getAllCounters(uid) {
-    assertCounter(uid, '0');
-    return users[uid].counter;
+class user {
+    constructor(uid, meta) {
+        this.uid = uid;
+        this.enabled = true;
+        this.meta = meta;
+        this.Settings = new Settings();
+    }
+    assert() {
+        /* */
+    }
 }
 
 module.exports = {
     loadUsers,
+    loadImageryPromised,
+    saveImagery,
+    saveUsers,
+    user,
+    Settings,
     registerUser,
+    getUser,
     getUserList,
     setMetaData,
     getMetaData,
-    setCounter,
-    getCounter,
-    getAllCounters
+    getSubscriptedUsers
 };

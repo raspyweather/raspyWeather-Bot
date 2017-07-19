@@ -3,222 +3,318 @@ const {
     Extra,
     Markup
 } = require('telegraf');
-
+const sys = require('sys');
+const child_process = require('child_process');
+const { promisify } = require('util');
 const config = require('./config');
+const util = require('util');
 const dataService = require('./dataService');
-
+const Imagery = require('./Imagery.js').Imagery;
+const gdrive = require('./gdrive.js');
+const fs = require('fs');
 const bot = new Telegraf(config.botToken);
+const helpMsg = `Manual
+/start - Start bot.
+/get - Get the newest images based on your selection
+/select - Select which modes you want to get
+/getAudio - Get the latest satellite pass recording
+/getAll - Get all Images from the newest satellite pass
+/stop - Stop.
+/help - Show this.
+/about -Show creator's information`;
+const aboutMsg = "This bot was created by @Athlon4400";
+const stopMsg = "Don't blame me for the next storm";
+const startMsg = "Hello, I'm the raspyweather bot!";
+const audioPath = "/FTP/wxotimg/audio/";
+let newestDate = null;
+let images = null;
 
-const helpMsg = `Command reference:
-/start - Start bot (mandatory in groups)
-/inc - Increment default counter
-/inc1 - Increment counter 1
-/incx - Increment counter x (replace x with any number)
-/dec - Decrement counter
-/decx - Decrement counter x
-/reset - Reset counter back to 0
-/resetx - Reset counter x back to 0
-/set X - Set counter to y [/set y]
-/setx - Set counter x to y [/setx y]
-/get - Show current counter
-/getx - Show value of counter x
-/getall - Show all counters
-/stop - Attemt to stop bot
-/about - Show information about the bot
-/help - Show this help page`;
-
-const inputErrMsg = `💥 BOOM... 🔩☠🔧🔨⚡️
-Hm, that wasn't supposed to happen. You didn't input invalid characters, did you?
-The usage for this command is \"/set x\", where x is a number.
-At the moment, I can only count integers, if you want to add your own number system, please feel free to do so. Just click here: /about `;
-
-const incNMsg = `To use multiple counters, simply put the number of the counter you want to increase directly after the command like so:
-/inc1 <- this will increment counter 1
-/inc  <- this will increment the default counter (0)
-This does also work with other commands like /dec1 /reset1 /set1 /get1`;
-
-const aboutMsg = "This bot was created by @LeoDJ\nSource code and contact information can be found at https://github.com/LeoDJ/telegram-counter-bot";
-
-function getRegExp(command) {
-    return new RegExp("/" + command + "[0-9]*\\b");
-}
+//startup Stuff
+dataService.loadUsers();
 
 //get username for group command handling
 bot.telegram.getMe().then((botInfo) => {
     bot.options.username = botInfo.username;
-    console.log("Initialized", botInfo.username);
+    console.log("\nInitialized" + botInfo.username + "\n");
 });
-
-dataService.loadUsers();
-
-function userString(ctx) {
-    return JSON.stringify(ctx.from.id == ctx.chat.id ? ctx.from : {
-        from: ctx.from,
-        chat: ctx.chat
-    });
-}
-
 function logMsg(ctx) {
-    var from = userString(ctx);
-    console.log('<', ctx.message.text, from)
+    //log messages.
+    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id == ctx.chat.id ? ctx.from : { from: ctx.from, chat: ctx.chat }) + "\n\n");
+    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id == ctx.chat.id ? ctx.from : { from: ctx.from, chat: ctx.chat }));
+    console.log('\n\n');
 }
-
 function logOutMsg(ctx, text) {
-    console.log('>', {
+    //log replies
+    console.log('\n> ' + {
         id: ctx.chat.id
-    }, text);
+    } + " " + text);
+    console.log('\n\n');
 }
 
 bot.command('broadcast', ctx => {
-    if(ctx.from.id == config.adminChatId) {
+    // send message to every bot user
+    if (ctx.from.id == config.adminChatId) {
         var words = ctx.message.text.split(' ');
         words.shift(); //remove first word (which ist "/broadcast")
-        if(words.length == 0) //don't send empty message
+        if (words.length == 0) //don't send empty message
             return;
         var broadcastMessage = words.join(' ');
         var userList = dataService.getUserList();
-        console.log("Sending broadcast message to", userList.length, "users:  ", broadcastMessage);
+        console.log("\nSending broadcast message to", userList.length, "users:  ", broadcastMessage, "\n");
         userList.forEach(userId => {
-            console.log(">", {id: userId}, broadcastMessage);
+            console.log("\n>", { id: userId }, broadcastMessage);
             ctx.telegram.sendMessage(userId, broadcastMessage);
         });
     }
 });
-
 bot.command('start', ctx => {
+    // should be changed later.
     logMsg(ctx);
     dataService.registerUser(ctx);
-    dataService.setCounter(ctx.chat.id, '0', 0);
-    var m = "Hello, I'm your personal counter bot, simply use the commands to control the counter";
-    ctx.reply(m);
-    logOutMsg(ctx, m);
+    ctx.reply(startMsg);
+    logOutMsg(ctx, startMsg);
     setTimeout(() => {
         ctx.reply(0);
         logOutMsg(ctx, 0)
     }, 50); //workaround to send this message definitely as second message
 });
+bot.command('subscribe', ctx => {
+    //enable autonotification
+    dataService.getUser(ctx.from.id).Settings.autoSend = true;
+    dataService.saveUsers();
+    ctx.reply("The bot will notify you soon about new data, use /stop if you want no notifications anymore");
+});
+
 
 bot.command('stop', ctx => {
+    //disable autonotification
     logMsg(ctx);
-    var m = "I'm sorry, Dave, I'm afraid I can't do that.";
+    var m = "Don't blame me for the next hazard";
+    dataService.getUser(ctx.from.id).Settings.autoSend = false;
     logOutMsg(ctx, m);
     ctx.reply(m);
-});
-
-bot.command(['incx', 'decx', 'getx', 'setx', 'resetx'], ctx => {
-    logMsg(ctx);
-    logOutMsg(ctx, incNMsg);
-    ctx.reply(incNMsg);
-});
-
+});/*
+bot.command('ping', ctx => {
+    exec("ping 8.8.8.8 -c 1").
+});*/
 bot.command('help', ctx => {
+    //show help about commands
     logMsg(ctx);
     logOutMsg(ctx, helpMsg);
     ctx.reply(helpMsg);
 });
-
 bot.command('about', ctx => {
+    //show information about this bot
     logMsg(ctx);
     logOutMsg(ctx, aboutMsg);
     ctx.reply(aboutMsg);
 });
-
-bot.command('getall', ctx => {
+bot.command('get', ctx => {
     logMsg(ctx);
-    counters = dataService.getAllCounters(ctx.chat.id);
-    msg = "";
-    Object.keys(counters).forEach(counterId => {
-        msg += '[' + counterId + '] ' + counters[counterId].value + "\n";
-    });
-    logOutMsg(ctx, msg);
-    ctx.reply(msg);
-});
-
-bot.hears(getRegExp('inc'), ctx => {
-    logMsg(ctx);
-    currentCommand = 'inc';
-    var m = ctx.message.text.match(getRegExp(currentCommand))[0]; //filter command
-    var counterId = m.substring(m.indexOf(currentCommand) + currentCommand.length) || 0; //get id of command, return 0 if not found
-
-    var val = +dataService.getCounter(ctx.chat.id, counterId);
-    ++val;
-    dataService.setCounter(ctx.chat.id, counterId, val);
-
-    var printCounterId = counterId ? "[" + counterId + "] " : "";
-    val = printCounterId + val;
-    logOutMsg(ctx, val);
-    ctx.reply(val);
-});
-
-bot.hears(getRegExp('dec'), ctx => {
-    logMsg(ctx);
-    currentCommand = 'dec';
-    var m = ctx.message.text.match(getRegExp(currentCommand))[0]; //filter command
-    var counterId = m.substring(m.indexOf(currentCommand) + currentCommand.length) || 0; //get id of command, return 0 if not found
-
-    var val = +dataService.getCounter(ctx.chat.id, counterId);
-    --val;
-    dataService.setCounter(ctx.chat.id, counterId, val);
-
-    var printCounterId = counterId ? "[" + counterId + "] " : "";
-    val = printCounterId + val;
-    logOutMsg(ctx, val);
-    ctx.reply(val);
-});
-
-bot.hears(getRegExp('reset'), ctx => {
-    logMsg(ctx);
-    currentCommand = 'reset';
-    var m = ctx.message.text.match(getRegExp(currentCommand))[0]; //filter command
-    var counterId = m.substring(m.indexOf(currentCommand) + currentCommand.length) || 0; //get id of command, return 0 if not found
-
-    var val = 0;
-    dataService.setCounter(ctx.chat.id, counterId, val);
-
-    var printCounterId = counterId ? "[" + counterId + "] " : "";
-    val = printCounterId + val;
-    logOutMsg(ctx, val);
-    ctx.reply(val);
-});
-
-bot.hears(getRegExp('get'), ctx => {
-    logMsg(ctx);
-    currentCommand = 'get';
-    var m = ctx.message.text.match(getRegExp(currentCommand))[0]; //filter command
-    var counterId = m.substring(m.indexOf(currentCommand) + currentCommand.length) || 0; //get id of command, return 0 if not found
-
-    var val = +dataService.getCounter(ctx.chat.id, counterId);
-
-    var printCounterId = counterId ? "[" + counterId + "] " : "";
-    val = printCounterId + val;
-    logOutMsg(ctx, val);
-    ctx.reply(val);
-});
-
-bot.hears(getRegExp('set'), ctx => {
-    logMsg(ctx);
-    currentCommand = 'set';
-    var m = ctx.message.text.match(getRegExp(currentCommand))[0]; //filter command
-    var counterId = m.substring(m.indexOf(currentCommand) + currentCommand.length) || 0; //get id of command, return 0 if not found
-
-    params = ctx.message.text.split(" ");
-    if (params.length == 2 && !isNaN(params[1])) {
-        var val = Math.floor(params[1]);
-        dataService.setCounter(ctx.chat.id, counterId, val);
-        var printCounterId = counterId ? "[" + counterId + "] " : "";
-        val = printCounterId + val;
-    } else {
-        val = inputErrMsg;
+    let usr = dataService.getUser(ctx.from.id);
+    let dat = images.GetNewestDate();
+    let settings = usr.Settings;
+    ctx.replyWithMarkdown("Latest Satellite pass:\n`" + images.DateUtility.GetDINNotation(dat) + "`");
+    for (let modeStr of settings.selectedModes) {
+        //new image found
+        if (images.Data[dat] != undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
+            let stuff = images.GetImageLinkFromExactDate(dat, modeStr);
+            sendImage(ctx, stuff, modeStr, dat, images.Data[dat].Sat);
+            logOutMsg(ctx, stuff);
+        }
+        //returning older Image
+        else {
+            let stuff = images.GetImageLinkAndDateNewestMode(dat, modeStr);
+            sendImage(ctx, stuff.link, modeStr, stuff.date, images.Data[stuff.date].Sat);
+            logOutMsg(ctx, stuff);
+        }
     }
-
-    logOutMsg(ctx, val);
-    ctx.reply(val);
 });
+bot.command('getAudio', async function (ctx) {
+    logMsg(ctx);
+    try {
+        let readDir = util.promisify(fs.readdir);
+        let list = await readDir(audioPath);
+        let ar = list.map(name => {
+            return {
+                file: name,
+                date: new Date(name.substring(0, 4) + "/" +
+                    name.substring(4, 6) + "/" +
+                    name.substring(6, 8) + "/" +
+                    name.substring(8, 10) + ":" +
+                    name.substring(10, 12))
+            };
+        }).sort((x, y) => { return y.date.getTime() - x.date.getTime(); });
+        ctx.reply("Audio file is being uploaded. Please be patient. ")
+        await ctx.replyWithVoice(
+            { source: fs.createReadStream(audioPath + ar[0].file) },
+            { caption: "noaa" + images.Data[ar[0].date].Sat + " " + images.DateUtility.GetDINNotation(ar[0].date) });
+    } catch (Err) {
+        console.log(Err);
+        return;
+    }
+});
+function createModeButtons(selectedModes) {
+    let tmp = [];
+    let inlineData = [];
+    let rowCnt = 3;
+    images.ImageModes.forEach((val, i) => {
+        if (i % rowCnt == 0) { tmp = []; }
+        tmp.push(Markup.callbackButton(val + (selectedModes.indexOf(val) > -1 ? "✅ " : ""), "modeSelect_" + val));
+        if (i % rowCnt == rowCnt - 1) { inlineData.push(tmp); }
+    });
+    return inlineData;
+}
+bot.command('kill', async function (ctx) {
+    if (ctx.from.id == config.adminChatId) {
+        await ctx.reply("commiting suicide now.");
+        console.log("kill");
+        setTimeout(() => process.exit(1), 5000);
+        return;
+    }
+    else {
+        ctx.reply("Sorry, you're not allowed to use this command.");
+    }
+});
+bot.command('select', async function (ctx) {
+    //update selected modes [not implemented yet... :( ]
+    logMsg(ctx);
+    let user = dataService.getUser(ctx.chat.id);
+    if (user.selectMessage !== undefined) {
+        console.log("deleting ", ctx.chat.id, user.selectedMessage);
+        //   await ctx.deleteMessage(ctx.chat.id,user.selectMessage.message_id);
+    }
+    let res = await ctx.reply('Please select your favourite image modes:',
+        Extra.HTML().markup(Markup.inlineKeyboard(createModeButtons(user.Settings.selectedModes))));
+    dataService.getUser(ctx.chat.id).selectMessage = {
+        message_id: res.message_id,
+        date: res.date
+    };
+    dataService.saveUsers();
+    console.log(res);
+    logOutMsg(ctx, aboutMsg);
+});
+bot.command('getMeta', ctx => {
+    //send some weird statistics...
+    //will be extended later [maybe]
+    logMsg(ctx);
+    ctx.reply(
+        "\nNumber of flights: " + images.Dates.length +
+        "\nOldest pass: " + images.DateUtility.GetDINNotation(images.GetOldestDate()) +
+        "\nNewest pass: " + images.DateUtility.GetDINNotation(images.GetNewestDate()) +
+        "\nNr. of ImageModes: " + images.ImageModes.length +
+        "\nNr. of Images: " + images.Dates.map(x => images.Data[x].ModeIds.length).reduce((x, y) => x + y)
+    );
+    logOutMsg(ctx, aboutMsg);
+});
+bot.command('getDates', ctx => {
+    let str = "Last satellite passes:";
+    for (let i = 0; i < 5 && i < images.Dates.length; i++) {
+        str += "\n`" + images.DateUtility.GetDINNotation(images.Dates[i]) + "`";
+    }
+    ctx.replyWithMarkdown(str);
 
+});
+bot.command('getAll', ctx => {
+    // return all images of the last satellite pass
+    let data = images.Data[newestDate];
+    for (let modeIdx of data.ModeIds) {
+        sendImage(ctx,
+            images.GetImageLinkFromId(data.IDs[modeIdx]),
+            images.ImageModes[modeIdx],
+            newestDate,
+            images.Data[newestDate].Sat);
+    }
+});
+bot.action(/modeSelect_.+/,
+    (msg, { deleteMessage, message_id }) => {
+        let usr = dataService.getUser(msg.chat.id);
+        let modeStr = msg.callbackQuery.data.replace('modeSelect_', '');
+        if (usr.Settings.selectedModes.indexOf(modeStr) > -1) {
+            usr.Settings.selectedModes = usr.Settings.selectedModes.filter(x => x != modeStr);
+        }
+        else {
+            usr.Settings.selectedModes.push(modeStr);
+        }
+        dataService.saveUsers();
+        msg.editMessageText(usr.Settings.selectedModes.reduce((x, y) => x + ", " + y) + "selected ",
+            Extra.HTML().markup(Markup.inlineKeyboard(createModeButtons(usr.Settings.selectedModes))));
+        //msg.editMessageReplyMarkup
+        /*msg.editMessageText(msg.chat.id, msg.callbackQuery.message.message_id,  msg.callbackQuery.message.message_id, 'Please select your favourite image modes:' + 'u',
+            Extra.HTML().markup(Markup.inlineKeyboard(createModeButtons(usr.Settings.selectedModes))));*/
+    });
+function sendImage(ctx, url, modeStr, date, sat) {
+    ctx.replyWithPhoto(url,
+        {
+            caption: "Mode:\t" + modeStr +
+            "\n Date:\t" + images.DateUtility.GetDINNotation(date) +
+            "\n Satellite:\tnoaa" + sat
+        });
+}
 
-bot.startPolling();
+console.log("bot started");
+async function updateDB() {
+    try {
+        //load imageCache
+        images = await dataService.loadImageryPromised();
+        newestDate = images.GetNewestDate();
+        let files = await gdrive.loadFilesPromised();
+        images.processData(files);
+        dataService.saveImagery(images);
+        let tmpDate = images.GetNewestDate();
+        // if newestDate is null, images haven't been updated yet.
+        console.log("Dates:");
+        console.log(images.DateUtility.GetDINNotation(newestDate), images.DateUtility.GetDINNotation(tmpDate));
+        if (newestDate != null && tmpDate == undefined || newestDate != undefined && tmpDate != undefined && newestDate.getTime() != tmpDate.getTime()) {
+            console.log("\rdb updated " +
+                images.DateUtility.GetDINNotation(newestDate) + " " +
+                images.DateUtility.GetDINNotation(images.GetNewestDate()));
 
+            //get users which want to be notified
+            let users = dataService.getSubscriptedUsers();
+            console.log("\n" + users.length + " users will be notified\n");
+            users.forEach(user => {
+                let selectedModes = user.Settings.selectedModes;
+                let data = images.Data[tmpDate];
+                //send information about the satellite pass
+                bot.telegram.sendMessage(user.uid, "Satellite noaa" + data.Sat + " passed at " + images.DateUtility.GetDINNotation(tmpDate));
+                selectedModes.forEach(modeStr => {
+                    //send every image which is selected
+                    let mIdx = images.ImageModes.indexOf(modeStr);
+                    if (mIdx > -1 && data.ModeIds.indexOf(mIdx) > -1) {
+                        bot.telegram.sendPhoto(user.uid, {
+                            url: images.GetImageLinkFromId(data.IDs[mIdx])
+                        });
+                        //                        bot.telegram.sendPhoto(user.uid, { source: images.GetImageLinkFromId(data.IDs[mIdx]) }, { caption: modeStr });
+                    }
+                });
+            });
+        }
+        else {
+            // no newer satellite pass detected
+            console.log("\rdb not updated " + images.DateUtility.GetDINNotation(new Date()));
+        }
+        newestDate = tmpDate;
+    }
+    catch (e) {
+        process.stderr.write(JSON.stringify(e));
+        console.log(JSON.stringify(e));
+    }
+    setTimeout(updateDB, 60 * 5 * 1000);
+};
+
+async function startup() {
+    //wait until DB got updated before starting the bot
+    console.log("updating DB.");
+    await updateDB();
+    console.log("updated DB.Bot starts now polling.");
+    bot.startPolling();
+}
+
+startup();
 
 module.exports = {
-
+    images,
+    updateDB,
+    bot
 }
