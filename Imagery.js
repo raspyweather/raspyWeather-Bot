@@ -28,11 +28,12 @@ class Imagery {
 
     }
     processData(files) {
+        console.log("Processing:",files.length," files");
         for (let file of files) {
             if (file == undefined) { continue; }
             let name = file.name;
             if (name.endsWith(".log")) {
-                Imagery.LogFileId = file.id;
+                this.LogFileId = file.id;
                 continue;
             }
             let id = file.id;
@@ -48,6 +49,7 @@ class Imagery {
             if (this.Satellites.indexOf(sat) == -1) { this.Satellites.push(sat); }
             if (this.Data[dat] == undefined) {
                 //NEW IMAGES            
+                console.log("new files",dat);
                 this.Dates.push(dat);
                 this.Data[dat] = {
                     Sat: sat,
