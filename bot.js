@@ -109,6 +109,56 @@ bot.command('about', ctx => {
     logOutMsg(ctx, aboutMsg);
     ctx.reply(aboutMsg);
 });
+bot.command('get2', ctx => {
+    logMsg(ctx);
+    let usr = dataService.getUser(ctx.from.id);
+    if(images.Dates.length<3){
+        ctx.reply("no image found");
+        return;
+    }
+    let dat = images.Dates[1];
+    let settings = usr.Settings;
+    ctx.replyWithMarkdown("Latest Satellite pass:\n`" + images.DateUtility.GetDINNotation(dat) + "`");
+    for (let modeStr of settings.selectedModes) {
+        //new image found
+        if (images.Data[dat] != undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
+            let stuff = images.GetImageLinkFromExactDate(dat, modeStr);
+            sendImage(ctx, stuff, modeStr, dat, images.Data[dat].Sat);
+            logOutMsg(ctx, stuff);
+        }
+        //returning older Image
+        else {
+            let stuff = images.GetImageLinkAndDateNewestMode(dat, modeStr);
+            sendImage(ctx, stuff.link, modeStr, stuff.date, images.Data[stuff.date].Sat);
+            logOutMsg(ctx, stuff);
+        }
+    }
+});
+bot.command('get3', ctx => {
+    logMsg(ctx);
+    let usr = dataService.getUser(ctx.from.id);
+    if(images.Dates.length<4){
+        ctx.reply("no image found");
+        return;
+    }
+    let dat = images.Dates[2];
+    let settings = usr.Settings;
+    ctx.replyWithMarkdown("Latest Satellite pass:\n`" + images.DateUtility.GetDINNotation(dat) + "`");
+    for (let modeStr of settings.selectedModes) {
+        //new image found
+        if (images.Data[dat] != undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
+            let stuff = images.GetImageLinkFromExactDate(dat, modeStr);
+            sendImage(ctx, stuff, modeStr, dat, images.Data[dat].Sat);
+            logOutMsg(ctx, stuff);
+        }
+        //returning older Image
+        else {
+            let stuff = images.GetImageLinkAndDateNewestMode(dat, modeStr);
+            sendImage(ctx, stuff.link, modeStr, stuff.date, images.Data[stuff.date].Sat);
+            logOutMsg(ctx, stuff);
+        }
+    }
+});
 bot.command('get', ctx => {
     logMsg(ctx);
     let usr = dataService.getUser(ctx.from.id);
@@ -169,7 +219,8 @@ bot.command('kill', async function (ctx) {
     if (ctx.from.id == config.adminChatId) {
         await ctx.reply("commiting suicide now.");
         console.log("kill");
-        setTimeout(() => process.exit(1), 5000);
+        images=new Imagery();
+        images = await dataService.loadImageryPromised();
         return;
     }
     else {
