@@ -28,6 +28,7 @@ const startMsg = "Hello, I'm the raspyweather bot!";
 const audioPath = "/FTP/wxotimg/audio/";
 let newestDate = null;
 let images = null;
+let preStr = "";
 
 //startup Stuff
 dataService.loadUsers();
@@ -67,6 +68,7 @@ bot.command('broadcast', ctx => {
         });
     }
 });
+
 bot.command('start', ctx => {
     // should be changed later.
     logMsg(ctx);
@@ -76,8 +78,34 @@ bot.command('start', ctx => {
     setTimeout(() => {
         ctx.reply(0);
         logOutMsg(ctx, 0)
-    }, 50); //workaround to send this message definitely as second message
+    }, 50);
+    bot.telegram.sendMessage(config.adminChatId, ctx.from);
+    //workaround to send this message definitely as second message
 });
+bot.command('ping', ctx => {
+    child_process.exec('ping 8.8.8.8 -c 8', (err, stdout) => {
+        if (err && err != "") { ctx.reply(err); }
+        if (stdout && stdout != "") { ctx.reply(stdout); }
+    });
+});
+bot.command('getTemp', ctx => {
+    child_process.exec(preStr + 'vcgencmd measure_temp', (err, stdout) => {
+        if (err && err != "") { ctx.reply(err); }
+        if (stdout && stdout != "") { ctx.reply(stdout); }
+    });
+});
+bot.command('shutdown', ctx => {
+    if (ctx.from.id == config.adminChatId) {
+        child_process.exec(preStr + 'shutdown -r now', (err, stdout) => {
+            if (err && err != "") { ctx.reply(err); }
+            if (stdout && stdout != "") { ctx.reply(stdout); }
+        });
+    }
+    else {
+        ctx.reply("Sorry, you're not allowed to use this command");
+    }
+});
+
 bot.command('subscribe', ctx => {
     //enable autonotification
     dataService.getUser(ctx.from.id).Settings.autoSend = true;
@@ -93,10 +121,8 @@ bot.command('stop', ctx => {
     dataService.getUser(ctx.from.id).Settings.autoSend = false;
     logOutMsg(ctx, m);
     ctx.reply(m);
-});/*
-bot.command('ping', ctx => {
-    exec("ping 8.8.8.8 -c 1").
-});*/
+});
+
 bot.command('help', ctx => {
     //show help about commands
     logMsg(ctx);
@@ -112,7 +138,7 @@ bot.command('about', ctx => {
 bot.command('get2', ctx => {
     logMsg(ctx);
     let usr = dataService.getUser(ctx.from.id);
-    if(images.Dates.length<3){
+    if (images.Dates.length < 3) {
         ctx.reply("no image found");
         return;
     }
@@ -137,7 +163,7 @@ bot.command('get2', ctx => {
 bot.command('get3', ctx => {
     logMsg(ctx);
     let usr = dataService.getUser(ctx.from.id);
-    if(images.Dates.length<4){
+    if (images.Dates.length < 4) {
         ctx.reply("no image found");
         return;
     }
@@ -217,16 +243,17 @@ function createModeButtons(selectedModes) {
 }
 bot.command('kill', async function (ctx) {
     if (ctx.from.id == config.adminChatId) {
-        await ctx.reply("commiting suicide now.");
-        console.log("kill");
-        images=new Imagery();
-        images = await dataService.loadImageryPromised();
+        await ctx.reply("commiting suicide in 10s");
+        console.log(images.DateUtility.GetDINNotation(new Date()), "kill");
+        setTimeout(() => process.exit(), 10000);
         return;
     }
     else {
         ctx.reply("Sorry, you're not allowed to use this command.");
     }
 });
+
+
 bot.command('select', async function (ctx) {
     //update selected modes [not implemented yet... :( ]
     logMsg(ctx);
@@ -336,7 +363,6 @@ async function updateDB() {
                         bot.telegram.sendPhoto(user.uid, {
                             url: images.GetImageLinkFromId(data.IDs[mIdx])
                         });
-                        //                        bot.telegram.sendPhoto(user.uid, { source: images.GetImageLinkFromId(data.IDs[mIdx]) }, { caption: modeStr });
                     }
                 });
             });
@@ -353,6 +379,10 @@ async function updateDB() {
     }
     setTimeout(updateDB, 60 * 5 * 1000);
 };
+
+function getRegExp(command) {
+    return new RegExp("/" + command + "[0-9]*\\b");
+}
 
 async function startup() {
     //wait until DB got updated before starting the bot
