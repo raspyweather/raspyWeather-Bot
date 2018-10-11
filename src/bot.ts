@@ -5,7 +5,7 @@ const {
 } = require('telegraf');
 const sys = require('sys');
 const child_process = require('child_process');
-const { promisify } = require('util');
+const {promisify} = require('util');
 const config = require('./config');
 const util = require('util');
 const dataService = require('./dataService');
@@ -38,12 +38,20 @@ bot.telegram.getMe().then((botInfo) => {
     bot.options.username = botInfo.username;
     console.log("\nInitialized" + botInfo.username + "\n");
 });
+
 function logMsg(ctx) {
     //log messages.
-    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id == ctx.chat.id ? ctx.from : { from: ctx.from, chat: ctx.chat }) + "\n\n");
-    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id == ctx.chat.id ? ctx.from : { from: ctx.from, chat: ctx.chat }));
+    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id === ctx.chat.id ? ctx.from : {
+        from: ctx.from,
+        chat: ctx.chat
+    }) + "\n\n");
+    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id === ctx.chat.id ? ctx.from : {
+        from: ctx.from,
+        chat: ctx.chat
+    }));
     console.log('\n\n');
 }
+
 function logOutMsg(ctx, text) {
     //log replies
     console.log('\n> ' + {
@@ -54,16 +62,16 @@ function logOutMsg(ctx, text) {
 
 bot.command('broadcast', ctx => {
     // send message to every bot user
-    if (ctx.from.id == config.adminChatId) {
+    if (ctx.from.id === config.adminChatId) {
         var words = ctx.message.text.split(' ');
         words.shift(); //remove first word (which ist "/broadcast")
-        if (words.length == 0) //don't send empty message
+        if (words.length === 0) //don't send empty message
             return;
         var broadcastMessage = words.join(' ');
         var userList = dataService.getUserList();
         console.log("\nSending broadcast message to", userList.length, "users:  ", broadcastMessage, "\n");
         userList.forEach(userId => {
-            console.log("\n>", { id: userId }, broadcastMessage);
+            console.log("\n>", {id: userId}, broadcastMessage);
             ctx.telegram.sendMessage(userId, broadcastMessage);
         });
     }
@@ -84,21 +92,33 @@ bot.command('start', ctx => {
 });
 bot.command('ping', ctx => {
     child_process.exec('ping 8.8.8.8 -c 8', (err, stdout) => {
-        if (err && err != "") { ctx.reply(err); }
-        if (stdout && stdout != "") { ctx.reply(stdout); }
+        if (err && err != "") {
+            ctx.reply(err);
+        }
+        if (stdout && stdout != "") {
+            ctx.reply(stdout);
+        }
     });
 });
 bot.command('getTemp', ctx => {
     child_process.exec(preStr + 'vcgencmd measure_temp', (err, stdout) => {
-        if (err && err != "") { ctx.reply(err); }
-        if (stdout && stdout != "") { ctx.reply(stdout); }
+        if (err && err !== "") {
+            ctx.reply(err);
+        }
+        if (stdout && stdout !== "") {
+            ctx.reply(stdout);
+        }
     });
 });
 bot.command('shutdown', ctx => {
-    if (ctx.from.id == config.adminChatId) {
+    if (ctx.from.id === config.adminChatId) {
         child_process.exec(preStr + 'shutdown -r now', (err, stdout) => {
-            if (err && err != "") { ctx.reply(err); }
-            if (stdout && stdout != "") { ctx.reply(stdout); }
+            if (err && err !== "") {
+                ctx.reply(err);
+            }
+            if (stdout && stdout !== "") {
+                ctx.reply(stdout);
+            }
         });
     }
     else {
@@ -117,7 +137,7 @@ bot.command('subscribe', ctx => {
 bot.command('stop', ctx => {
     //disable autonotification
     logMsg(ctx);
-    var m = "Don't blame me for the next hazard";
+    const m = "Don't blame me for the next hazard";
     dataService.getUser(ctx.from.id).Settings.autoSend = false;
     logOutMsg(ctx, m);
     ctx.reply(m);
@@ -147,7 +167,7 @@ bot.command('get2', ctx => {
     ctx.replyWithMarkdown("Latest Satellite pass:\n`" + images.DateUtility.GetDINNotation(dat) + "`");
     for (let modeStr of settings.selectedModes) {
         //new image found
-        if (images.Data[dat] != undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
+        if (images.Data[dat] !== undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
             let stuff = images.GetImageLinkFromExactDate(dat, modeStr);
             sendImage(ctx, stuff, modeStr, dat, images.Data[dat].Sat);
             logOutMsg(ctx, stuff);
@@ -172,7 +192,7 @@ bot.command('get3', ctx => {
     ctx.replyWithMarkdown("Latest Satellite pass:\n`" + images.DateUtility.GetDINNotation(dat) + "`");
     for (let modeStr of settings.selectedModes) {
         //new image found
-        if (images.Data[dat] != undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
+        if (images.Data[dat] !== undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
             let stuff = images.GetImageLinkFromExactDate(dat, modeStr);
             sendImage(ctx, stuff, modeStr, dat, images.Data[dat].Sat);
             logOutMsg(ctx, stuff);
@@ -193,7 +213,7 @@ bot.command('get', ctx => {
     ctx.replyWithMarkdown("Latest Satellite pass:\n`" + images.DateUtility.GetDINNotation(dat) + "`");
     for (let modeStr of settings.selectedModes) {
         //new image found
-        if (images.Data[dat] != undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
+        if (images.Data[dat] !== undefined && images.Data[dat].ModeIds.indexOf(images.ImageModes.indexOf(modeStr)) > -1) {
             let stuff = images.GetImageLinkFromExactDate(dat, modeStr);
             sendImage(ctx, stuff, modeStr, dat, images.Data[dat].Sat);
             logOutMsg(ctx, stuff);
@@ -220,29 +240,37 @@ bot.command('getAudio', async function (ctx) {
                     name.substring(8, 10) + ":" +
                     name.substring(10, 12))
             };
-        }).sort((x, y) => { return y.date.getTime() - x.date.getTime(); });
+        }).sort((x, y) => {
+            return y.date.getTime() - x.date.getTime();
+        });
         ctx.reply("Audio file is being uploaded. Please be patient. ")
         await ctx.replyWithVoice(
-            { source: fs.createReadStream(audioPath + ar[0].file) },
-            { caption: "noaa" + images.Data[ar[0].date].Sat + " " + images.DateUtility.GetDINNotation(ar[0].date) });
+            {source: fs.createReadStream(audioPath + ar[0].file)},
+            {caption: "noaa" + images.Data[ar[0].date].Sat + " " + images.DateUtility.GetDINNotation(ar[0].date)});
     } catch (Err) {
         console.log(Err);
         return;
     }
 });
+
 function createModeButtons(selectedModes) {
     let tmp = [];
     let inlineData = [];
     let rowCnt = 3;
     images.ImageModes.forEach((val, i) => {
-        if (i % rowCnt == 0) { tmp = []; }
+        if (i % rowCnt === 0) {
+            tmp = [];
+        }
         tmp.push(Markup.callbackButton(val + (selectedModes.indexOf(val) > -1 ? "✅ " : ""), "modeSelect_" + val));
-        if (i % rowCnt == rowCnt - 1) { inlineData.push(tmp); }
+        if (i % rowCnt === rowCnt - 1) {
+            inlineData.push(tmp);
+        }
     });
     return inlineData;
 }
+
 bot.command('kill', async function (ctx) {
-    if (ctx.from.id == config.adminChatId) {
+    if (ctx.from.id === config.adminChatId) {
         await ctx.reply("commiting suicide in 10s");
         console.log(images.DateUtility.GetDINNotation(new Date()), "kill");
         setTimeout(() => process.exit(), 10000);
@@ -296,6 +324,7 @@ bot.command('getDates', ctx => {
 bot.command('getAll', ctx => {
     // return all images of the last satellite pass
     let data = images.Data[newestDate];
+
     for (let modeIdx of data.ModeIds) {
         sendImage(ctx,
             images.GetImageLinkFromId(data.IDs[modeIdx]),
@@ -303,13 +332,21 @@ bot.command('getAll', ctx => {
             newestDate,
             images.Data[newestDate].Sat);
     }
+    const urls = [];
+    selectedModes.forEach(modeStr => {
+        let mIdx = images.ImageModes.indexOf(modeStr);
+        if (mIdx > -1 && data.ModeIds.indexOf(mIdx) > -1) {
+            urls.push(images.GetImageLinkFromId(data.IDs[mIdx]));
+        }
+    });
+    bot.telegram.sendMediaGroup(ctx.user_id,urls.map(x=>{return {media: x}}));
 });
 bot.action(/modeSelect_.+/,
-    (msg, { deleteMessage, message_id }) => {
+    (msg, {deleteMessage, message_id}) => {
         let usr = dataService.getUser(msg.chat.id);
         let modeStr = msg.callbackQuery.data.replace('modeSelect_', '');
         if (usr.Settings.selectedModes.indexOf(modeStr) > -1) {
-            usr.Settings.selectedModes = usr.Settings.selectedModes.filter(x => x != modeStr);
+            usr.Settings.selectedModes = usr.Settings.selectedModes.filter(x => x !== modeStr);
         }
         else {
             usr.Settings.selectedModes.push(modeStr);
@@ -321,6 +358,7 @@ bot.action(/modeSelect_.+/,
         /*msg.editMessageText(msg.chat.id, msg.callbackQuery.message.message_id,  msg.callbackQuery.message.message_id, 'Please select your favourite image modes:' + 'u',
             Extra.HTML().markup(Markup.inlineKeyboard(createModeButtons(usr.Settings.selectedModes))));*/
     });
+
 function sendImage(ctx, url, modeStr, date, sat) {
     ctx.replyWithPhoto(url,
         {
@@ -329,8 +367,8 @@ function sendImage(ctx, url, modeStr, date, sat) {
             "\n Satellite:\tnoaa" + sat
         });
 }
-
 console.log("bot started");
+
 async function updateDB() {
     try {
         //load imageCache
@@ -343,7 +381,7 @@ async function updateDB() {
         // if newestDate is null, images haven't been updated yet.
         console.log("Dates:");
         console.log(images.DateUtility.GetDINNotation(newestDate), images.DateUtility.GetDINNotation(tmpDate));
-        if (newestDate != null && tmpDate == undefined || newestDate != undefined && tmpDate != undefined && newestDate.getTime() != tmpDate.getTime()) {
+        if (newestDate != null && tmpDate === undefined || newestDate !== undefined && tmpDate !== undefined && newestDate.getTime() !== tmpDate.getTime()) {
             console.log("\rdb updated " +
                 images.DateUtility.GetDINNotation(newestDate) + " " +
                 images.DateUtility.GetDINNotation(images.GetNewestDate()));
@@ -355,16 +393,19 @@ async function updateDB() {
                 let selectedModes = user.Settings.selectedModes;
                 let data = images.Data[tmpDate];
                 //send information about the satellite pass
-                bot.telegram.sendMessage(user.uid, "Satellite noaa" + data.Sat + " passed at " + images.DateUtility.GetDINNotation(tmpDate));
+              //  bot.telegram.sendMessage(user.uid, "Satellite noaa" + data.Sat + " passed at " + images.DateUtility.GetDINNotation(tmpDate));
+                const urls = [];
                 selectedModes.forEach(modeStr => {
                     //send every image which is selected
                     let mIdx = images.ImageModes.indexOf(modeStr);
                     if (mIdx > -1 && data.ModeIds.indexOf(mIdx) > -1) {
-                        bot.telegram.sendPhoto(user.uid, {
+                        urls.push(images.GetImageLinkFromId(data.IDs[mIdx]));
+                     /*   bot.telegram.sendPhoto(user.uid, {
                             url: images.GetImageLinkFromId(data.IDs[mIdx])
-                        });
+                        });*/
                     }
                 });
+                bot.telegram.sendMediaGroup(user.uid,urls.map(x=>{return {media: x}}));
             });
         }
         else {
