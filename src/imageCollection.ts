@@ -1,4 +1,5 @@
 import { FileDate, NoaaFileParser } from "./FileDate";
+import { ImageInfo } from "./ImageInfo";
 
 export class ImageCollection {
     public addImages(files: { id: string, name: string }[], apiKey: string) {
@@ -80,19 +81,26 @@ export class ImageCollection {
         let shortenedSearchString = searchStr.substr(0, digits);
         return dates.filter(date => date.startsWith(shortenedSearchString));
     }
-    public getImageForFlight(fileDate: FileDate, modePrios: string[]) {
-        const driveUrl = "https://docs.google.com/uc?id=";
+
+    public getImageForFlight(fileDate: FileDate, modePrios: string[]): ImageInfo[] {
         const flightData = this.data[fileDate.getIdentifier()];
-        console.log({ flightData });
+        if (fileDate === undefined) { return []; }
         const modeIndexes = modePrios.map(mode => this.imageModes.indexOf(mode)).filter(x => x != -1);
-        console.log({ modeIndexes });
         const preferedItems = flightData.filter(x => modeIndexes.indexOf(x.modeIdx) > -1);
-        console.log({ preferedItems });
 
         if (preferedItems.length > 0) {
-            return preferedItems.map(item => driveUrl + item.id);
+            return preferedItems.map(item => this.makeImageInfo(item, fileDate));
         }
-        return flightData.slice(0, 2).map(item => driveUrl + item.id);
+        return flightData.slice(0, modePrios.length || flightData.length).map(item => this.makeImageInfo(item, fileDate));
+    }
+    private makeImageInfo(item: any, date: FileDate) {
+        const driveUrl = "https://docs.google.com/uc?id=";
+        return <ImageInfo>{
+            imageUrl: driveUrl + item.id,
+            date,
+            imageMode: this.imageModes[item.modeIdx],
+            satelliteName: this.satellites[item.satelliteIdx]
+        }
     }
     public getDatesSameDay(fileDate: FileDate) {
         return this.matchDates(fileDate.getIdentifier(), 8);

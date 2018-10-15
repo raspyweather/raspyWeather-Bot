@@ -37,7 +37,6 @@ export class DataService {
         }
         catch (e) {
             console.log({'could not load next images': e});
-            this.releaseLock();
             return [];
         }
     }

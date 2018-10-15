@@ -3,8 +3,11 @@ const Telegraf = require('telegraf');
 const child_process = require('child_process');
 import config from './config';
 import { FileDate } from "./FileDate";
+import { UserService } from "./userservice";
+import { ImageCollection } from "./imageCollection";
 
 const dataService = new DataService();
+const userService = new UserService();
 const fs = require('fs');
 const bot = new Telegraf(config.botToken);
 const stopMsg = "Really? I thought we were friends :(";
@@ -12,12 +15,12 @@ const startMsg = "Hello, I'm the raspyweather bot!";
 const audioPath = "/FTP/wxotimg/audio/";
 
 
-bot.telegram.getMe().then(botInfo => {
+bot.telegram.getMe().then((botInfo: any) => {
     bot.options.username = botInfo.username;
     console.log("\nInitialized" + botInfo.username + "\n");
 });
 
-function logMsg(ctx) {
+function logMsg(ctx: any) {
     //log messages.
     console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id === ctx.chat.id ? ctx.from : {
         from: ctx.from,
@@ -30,7 +33,7 @@ function logMsg(ctx) {
     console.log('\n\n');
 }
 
-function logOutMsg(ctx, text: string) {
+function logOutMsg(ctx: any, text: string) {
     //log replies
     console.log('\n> ' + {
         id: ctx.chat.id
@@ -38,6 +41,16 @@ function logOutMsg(ctx, text: string) {
     console.log('\n\n');
 }
 
+function logProcessResult(ctx: any) {
+    return (err: any, stdout: any) => {
+        if (err !== undefined && err !== null) {
+            ctx.reply('ERROR' + err);
+        }
+        if (stdout && stdout !== null) {
+            ctx.reply(stdout);
+        }
+    };
+}
 function setupMonitorCommands() {
     const publicCommands = [
         {
@@ -75,74 +88,79 @@ function setupMonitorCommands() {
     ];
 
     publicCommands.forEach(command =>
-        bot.command(command.name, ctx => child_process.exec(command.command, (err, stdout) => {
-            if (err !== undefined && err !== null) {
-                ctx.reply('ERROR' + err);
-            }
-            if (stdout && stdout !== null) {
-                ctx.reply(stdout);
-            }
-        })));
+        bot.command(command.name, (ctx: any) => child_process.exec(command.command, logProcessResult(ctx))));
     adminCommands.forEach(command =>
-        bot.command(command.name, ctx => {
+        bot.command(command.name, (ctx: any) => {
             if (ctx.from.id === config.adminChatId) {
-                child_process.exec(command.command, (err, stdout) => {
-                    if (err !== undefined && err !== null) {
-                        ctx.reply('ERROR' + err);
-                    }
-                    if (stdout && stdout !== null) {
-                        ctx.reply(stdout);
-                    }
-                });
+                child_process.exec(command.command, logProcessResult(ctx));
             }
         }));
     textCommands.forEach(command =>
-        bot.command(command.name, ctx => ctx.reply(command.message)));
+        bot.command(command.name, (ctx: any) => ctx.reply(command.message)));
     console.log('commands set up');
 }
 
 
-bot.command('get', ctx => {
+bot.command('get', (ctx: any) => {
     logMsg(ctx);
     dataService.getImages().then(images => {
         const newestDate = images.getNewestDate();
         ctx.replyWithMarkdown("Latest Satellite pass:\n```" + ((newestDate !== undefined) ? newestDate.getIdentifier() : "no dates available") + "```");
     });
 });
-bot.command('getTodaysImages', ctx => {
+bot.command('getTodaysImages', (ctx: any) => {
     logMsg(ctx);
     dataService.getImages().then(images => {
-        ctx.reply(images.getDatesSameDay(FileDate.now()));
+
+        const dates = images.getDatesSameDay(FileDate.now());
+
         //    ctx.reply(datesSince.map(date => date.getIdentifier()).reduce((prev, current) => current + '\n' + prev, ''));
     });
 });
-bot.command('getImages', ctx => {
+function getImage(images: ImageCollection, ctx: any, date: FileDate, modes: string[]) {
+    const replyImages = images.getImageForFlight(date, modes);
+    replyImages.forEach(image => {
+        ctx.replyWithPhoto({ url: image.imageUrl },
+            {
+                caption: image.satelliteName + "\n" + image.date.getIdentifier() + "\n" + image.imageMode
+            });
+    });
+}
+bot.command('getImages', (ctx: any) => {
+    logMsg(ctx);
+    dataService.getImages().then(images =>
+        userService.getUser(ctx.user.id).then(user => {
+            const newestDate = images.getNewestDate();
+            if (newestDate === undefined) { return; }
+            getImage(images, ctx, newestDate, user.preferedModes);
+        }));
+});
+bot.command('getAllImages', (ctx: any) => {
     logMsg(ctx);
     dataService.getImages().then(images => {
-        const replyImages = images.getImageForFlight(images.getNewestDate(), ["msa", "therm"]);
-        replyImages.forEach(image => {
-            ctx.replyWithPhoto(image,
+        images.getImageForFlight(images.getNewestDate() || FileDate.now(), []).forEach(image =>
+            ctx.replyWithPhoto({ url: image.imageUrl },
                 {
-                    caption: image
-                })
-        });
+                    caption: image.satelliteName + "\n" + image.date.getIdentifier() + "\n" + image.imageMode
+                }));
     });
 });
 
+const reloadTime = 100000;
 function startup() {
     //wait until DB got updated before starting the bot
     console.log("updating DB.");
-    dataService.loadData().then((img) => {
+    dataService.loadData().then((images) => {
         console.log("updated DB.Bot starts now polling.");
-        console.log({ img });
+        console.log({ newest: images.sort().reverse()[0] })
         bot.startPolling();
-        setTimeout(() => reload(), 100000);
+        setTimeout(() => reload(), reloadTime);
     });
 }
 
 function reload() {
     dataService.loadData().then(() => {
-        setTimeout(() => reload(), 100000);
+        setTimeout(() => reload(), reloadTime);
         console.log('successfully reloaded');
     }).catch(() => {
         console.log('error while loading- retrying');
