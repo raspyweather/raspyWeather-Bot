@@ -1,116 +1,44 @@
-const fs = require('fs');
-const Imagery = require('./Imagery.js').Imagery;
-const usrFileName = "./users.json";
-const imageryCacheName = "./imagery.json";
-var users = {};
-var fileLocked = false;
+import {ImageCollection} from "./imageCollection";
+import {get} from "./httpHandler";
+import {firebaseConfig} from "./firebaseConfig";
+import {FileDate} from "./FileDate";
 
-function loadUsers() {
-    fs.readFile(usrFileName, (err, data) => {
-        if (err) throw err;
-        if (data == "") {
-            return;
-        }
-        users = JSON.parse(data);
-    });
-}
-function saveUsers() {
-    if (!fileLocked) {
-        fileLocked = true;
-        var json = JSON.stringify(users);
-        fs.writeFile(usrFileName, json, 'utf8', function (err) {
-            if (err) throw err;
-            fileLocked = false;
-        })
-    }
-}
-function loadImageryPromised() {
-    return new Promise((resolve, reject) => {
-        fs.readFile(imageryCacheName, (err, data) => {
-            if (err) {
-                reject(err);
-                console.log("ERR");
-                return;
-            }
-            resolve(new Imagery(data));
-            return;
-        });
-    });
-}
-function optionify(obj) {
-    let optionObj = {};
-    for (let key of Object.keys(obj)) {
-        optionObj[key] = {
-            value: obj[key]
-        };
-    }
-    return optionObj;
-}
-function saveImagery(imagery) {
-    if (!fileLocked) {
-        fileLocked = true;
-        fs.writeFile(imageryCacheName, JSON.stringify(imagery), 'utf8', function (err) {
-            if (err) throw err;
-            fileLocked = false;
-        })
-    }
-}
-function registerUser(msg) {
-    let uid = msg.chat.id;
-    users[uid] = new user(uid, { from: msg.from, chat: msg.chat });
-    saveUsers();
-}
-function getUser(uid) {
-    return users[uid];
-}
-function getUserList() {
-    return Object.keys(users);
-}
-function setMetaData(uid, key, val) {
-    users[uid].data[key] = val;
-    saveUsers();
-}
-function getMetaData(uid, key) {
-    return users[uid].data[key];
-}
-function getSettings(uid) {
-    return users[uid].Settings;
-}
-function getSubscriptedUsers() {
-    return Object.keys(users).filter(uid => users[uid].Settings.autoSend).map(x => users[x]);
-}
-class Settings {
+export class DataService {
+
     constructor() {
-        this.autoSend = false;
-        this.selectedModes = ["therm", "msa"];
+        this.images = new ImageCollection();
     }
-    assert() {
-        /* */
+    private setLock(){
+        this.dbCallback = new Promise((res)=> this.releaseCall = res);
     }
-}
-class user {
-    constructor(uid, meta) {
-        this.uid = uid;
-        this.enabled = true;
-        this.meta = meta;
-        this.Settings = new Settings();
+    private releaseLock(){
+        this.dbCallback = this.noop;
+        this.releaseCall();
     }
-    assert() {
-        /* */
-    }
-}
+    private releaseCall:()=>void;
+    private readonly noop = new Promise((resolve)=>resolve());
+    public dbCallback:  Promise<any>= this.noop
 
-module.exports = {
-    loadUsers,
-    loadImageryPromised,
-    saveImagery,
-    saveUsers,
-    user,
-    Settings,
-    registerUser,
-    getUser,
-    getUserList,
-    setMetaData,
-    getMetaData,
-    getSubscriptedUsers
-};
+    public async getImages():Promise<ImageCollection>{
+        return await this.dbCallback.then(()=>this.images);
+    }
+    private images: ImageCollection;
+
+    public async loadData() {
+        try {
+            this.setLock();
+            const json = await get({url: firebaseConfig.url});
+            const nextImages = new ImageCollection();
+            const latestDate = this.images.getNewestDate() || new FileDate(2000, 11, 10, 10, 10);
+            nextImages.setInitialData(JSON.parse(json));
+            this.images = nextImages;
+            this.releaseLock();
+            return this.images.getDatesSince(latestDate);
+        }
+        catch (e) {
+            console.log({'could not load next images': e});
+            this.releaseLock();
+            return [];
+        }
+    }
+}

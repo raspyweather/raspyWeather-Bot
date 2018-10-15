@@ -1,4 +1,4 @@
-//change file name to "config.js"
+//change file name to "config.ts"
 module.exports = {
   botToken: 'YOURTOKENGOESHERE',
   adminChatId: 12345678,       //your telegram chat id here, allows usage of /broadcast command

@@ -1,1 +1,1 @@
-const bot = require('./bot');
+require('./bot');
