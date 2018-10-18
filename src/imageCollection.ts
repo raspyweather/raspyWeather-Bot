@@ -82,7 +82,7 @@ export class ImageCollection {
         return dates.filter(date => date.startsWith(shortenedSearchString));
     }
 
-    public getImageForFlight(fileDate: FileDate, modePrios: string[]): ImageInfo[] {
+    public getImageForFlight(fileDate: FileDate, modePrios: string[] = []): ImageInfo[] {
         const flightData = this.data[fileDate.getIdentifier()];
         if (fileDate === undefined) { return []; }
         const modeIndexes = modePrios.map(mode => this.imageModes.indexOf(mode)).filter(x => x != -1);
@@ -132,6 +132,9 @@ export class ImageCollection {
 
     public static get notAddedCounter(): number {
         return ImageCollection.notAddedCtr;
+    }
+    public getImageModes():string[]{
+        return this.imageModes;
     }
 
     private apiKeys: string[] = [];

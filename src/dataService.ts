@@ -9,9 +9,11 @@ export class DataService {
         this.images = new ImageCollection();
     }
     private setLock(){
+        console.log('dblocked');
         this.dbCallback = new Promise((res)=> this.releaseCall = res);
     }
     private releaseLock(){
+        console.log('dbunlocked');
         this.dbCallback = this.noop;
         this.releaseCall();
     }
@@ -20,6 +22,7 @@ export class DataService {
     public dbCallback:  Promise<any>= this.noop
 
     public async getImages():Promise<ImageCollection>{
+
         return await this.dbCallback.then(()=>this.images);
     }
     private images: ImageCollection;
