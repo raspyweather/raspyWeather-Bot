@@ -70,9 +70,11 @@ function setupMonitorCommands() {
     const textCommands = [
         {
             name: 'help',
-            message: `Manual
+            message: `Manual:
 /start - Start bot.
-/get - Get the newest images based on your selection
+/get - Gets the newest images
+/getDates - Get the last 10 satellite record dates
+/getTodaysImages - Get images from all satellite passes today
 /select - Select which modes you want to get
 /getAudio - Get the latest satellite pass recording
 /getAll - Get all Images from the newest satellite pass
@@ -82,7 +84,7 @@ function setupMonitorCommands() {
         },
         {
             name: 'about',
-            message: 'This bot was created by @Athlon4400'
+            message: 'This bot was created by @Athlon4400.\n Visit https://raspyweather.github.io or github.com/raspyweather for more cool stuff!'
         }
     ];
 
@@ -101,13 +103,12 @@ function setupMonitorCommands() {
 
 bot.command('getDates', log(async (ctx: any, par: ParamterCollection) => {
     const newestDate = par.images.getNewestDate();
-    console.log("Latest Satellite pass:\n```" + ((newestDate !== undefined) ? newestDate.toHumanReadableDate() : "no dates available") + "```");
-    await ctx.replyWithMarkdown("Latest Satellite pass:\n```" + ((newestDate !== undefined) ? newestDate.toHumanReadableDate() : "no dates available") + "```");
+    await ctx.replyWithMarkdown("Latest Satellite pass:\n`" + ((newestDate !== undefined) ? newestDate.toHumanReadableDate() : "no dates available") + "`");
 }));
 bot.command('getTodaysImages',
     log(async (ctx: any, par: ParamterCollection) =>
         Promise.all(par.images.getDatesSameDay(FileDate.now()).map(
-            date => sendImages(par.images, ctx, FileDate.fromIdentifier(date), par.user.preferedModes, par.user.showDetails))).then(() => { })
+            date => sendImages(par.images, par.user, FileDate.fromIdentifier(date), par.user.preferedModes, par.user.showDetails))).then(() => { })
     ));
 
 function imageInfoToString(imageInfo: ImageInfo) {
@@ -115,12 +116,13 @@ function imageInfoToString(imageInfo: ImageInfo) {
 Date:\t${imageInfo.date.toHumanReadableDate()}
 Mode:\t${imageInfo.imageMode}`;
 }
-async function sendImages(images: ImageCollection, ctx: any, date: FileDate, modes: string[], useDetail: boolean = false) {
+async function sendImages(images: ImageCollection, user: User, date: FileDate, modes: string[], useDetail: boolean = false) {
     const replyImages = images.getImageForFlight(date, modes);
     console.log(replyImages);
     if (useDetail) {
         await Promise.all(replyImages.map(image => {
-            ctx.replyWithPhoto(image.imageUrl, {
+            bot.telegram.sendPhoto(user.userId, {
+                media: image.imageUrl,
                 caption: imageInfoToString(image)
             });
         }));
@@ -139,16 +141,14 @@ async function sendImages(images: ImageCollection, ctx: any, date: FileDate, mod
         }
         if (stuff.length > 0) { arrays.push(stuff); }
         console.log(stuff);
-        await Promise.all(arrays.map(image => ctx.replyWithMediaGroup(image)));
+        await Promise.all(arrays.map(image => bot.telegram.sendMediaGroup(user.userId, image)));
     }
     console.log("images sent");
 }
 
-
-
 function setupConfigurationCommands() {
     const makeButtons = (modes: string[], user: User) =>
-        Extra.HTML().markup((m: any) => m.inlineKeyboard([m.callbackButton('Clear', 'clearSelectMessage'),
+        Extra.HTML().markup((m: any) => m.inlineKeyboard([m.callbackButton('Finish', 'clearSelectMessage_mode'),
         ...modes.map(mode => m.callbackButton(((user.preferedModes.indexOf(mode) > -1) ? "✅ " : "") + mode, 'modeSelect_' + mode))
         ], { columns: 3 }));
 
@@ -178,14 +178,10 @@ function setupConfigurationCommands() {
         await userService.updateUser(par.user);
         await msg.deleteMessage();
     }));
-    bot.action(/clearSelectMessage.+/, async (msg: any) => {
-        try {
-            await msg.deleteMessage();
-        }
-        catch (e) {
-            console.error(e);
-        }
-    });
+    bot.action(/clearSelectMessage.+/, log(async (msg: any) => {
+        console.log('clear');
+        await msg.deleteMessage();
+    }));
     bot.action(/modeSelect_.+/, log(async (msg: any, par: ParamterCollection) => {
         let user = par.user;
         let modeStr = msg.callbackQuery.data.replace('modeSelect_', '');
@@ -203,15 +199,15 @@ function setupConfigurationCommands() {
 }
 
 
-bot.command('getImages', log(async (ctx: any, par: ParamterCollection) => {
+bot.command('get', log(async (ctx: any, par: ParamterCollection) => {
     const newestDate = await par.images.getNewestDate();
     if (newestDate === undefined) { console.log('no date available'); return; }
-    await sendImages(par.images, ctx, newestDate, par.user.preferedModes);
+    await sendImages(par.images, par.user, newestDate, par.user.preferedModes);
 }));
 bot.command('getAllImages', log(async (ctx: any, par: ParamterCollection) => {
     const newestDate = par.images.getNewestDate();
     if (newestDate === null || newestDate === undefined) { console.log('no dates available'); return; }
-    await sendImages(par.images, ctx, newestDate, [], par.user.showDetails);
+    await sendImages(par.images, par.user, newestDate, [], par.user.showDetails);
 }));
 
 const reloadTime = 100000;
@@ -222,18 +218,33 @@ function startup() {
         console.log("updated DB.Bot starts now polling.");
         console.log({ newest: images.sort().reverse()[0] })
         bot.startPolling();
-        setTimeout(() => reload(), reloadTime);
+        setTimeout(async () => await reload(), reloadTime);
     });
 }
 
-function reload() {
-    dataService.loadData().then(() => {
-        setTimeout(() => reload(), reloadTime);
-        console.log('successfully reloaded');
-    }).catch(() => {
-        console.log('error while loading- retrying');
-        reload();
-    });
+async function reload() {
+    try {
+        const newDates = await dataService.loadData();
+        const images = await dataService.getImages();
+        const users = await userService.getAllUsers();
+        const usersToNotify = users.filter(user => user.autoSend);
+
+        await Promise.all(newDates.map(
+            date => Promise.all(usersToNotify.map(
+                user => sendImages(images, user, date, user.preferedModes, user.showDetails)))));
+
+
+
+        dataService.loadData().then(() => {
+            setTimeout(() => reload(), reloadTime);
+            console.log('successfully reloaded');
+        }).catch(() => {
+            console.log('error while loading- retrying');
+            reload();
+        });
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 setupMonitorCommands();

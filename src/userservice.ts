@@ -4,7 +4,7 @@ export interface User {
     userId: number;
     preferedModes: string[];
     autoSend: boolean;
-    showDetails:boolean;
+    showDetails: boolean;
 }
 // # TODO embed neDB
 // # TODO check db loss failover
@@ -62,6 +62,16 @@ export class UserService {
                 resolve(data);
             })));
     }
+    private readUsersFromDB(): Promise<User[]> {
+        return this.lock.then(() => new Promise<User[]>((resolve, reject) =>
+            this.dataStore.find({}, (err: Error, data: User[]) => {
+                console.log({ err, users: data });
+                if (err) {
+                    reject(err); return;
+                }
+                resolve(data);
+            })));
+    }
     private async updateUserInDB(user: User) {
         return this.lock.then(() => new Promise((resolve, reject) => this.dataStore.update({ "userId": user.userId }, user, {},
             (err: Error, numReplaced: any) => {
@@ -76,13 +86,16 @@ export class UserService {
     public async  getUser(userId: number): Promise<User> {
         let user: User = await this.readUserFromDB(userId);
         if (user === undefined || user === null) {
-            user = await this.createUserInDB({ userId,showDetails:false, preferedModes: ['msa', 'therm'], autoSend: true });
+            user = await this.createUserInDB({ userId, showDetails: false, preferedModes: ['msa', 'therm'], autoSend: true });
         }
         if (!Array.isArray(user.preferedModes)) {
             user.preferedModes = ['msa', 'therm'];
         }
         console.log(user);
         return user;
+    }
+    public async getAllUsers(): Promise<User[]> {
+        return await this.readUsersFromDB();
     }
     public async  updateUser(changedUser: User): Promise<void> {
         await this.updateUserInDB(changedUser);;
