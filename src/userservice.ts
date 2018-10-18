@@ -1,50 +1,90 @@
+import Datastore = require('nedb');
 
 export interface User {
     userId: number;
     preferedModes: string[];
     autoSend: boolean;
+    showDetails:boolean;
 }
-export class UserService {
-    constructor() {
+// # TODO embed neDB
+// # TODO check db loss failover
 
-        this.dataStore = new DataStore({
+export class UserService {
+
+    private unlock: () => void;
+    private lock: Promise<any>;
+    private dataStore: any;
+    static create() {
+        const service = new UserService();
+        return service;
+    }
+    constructor() {
+        this.createLock();
+        this.dataStore = new Datastore({
             autoload: true,
-            onload: () => this.createLock(),
-            beforeSerialization: () => this.createLock(),
-            afterSerialization: () => this.unlock(),
-            beforeDeserialization: () => this.createLock(),
-            afterDeserialization: () => this.unlock()
+            onload: (err) => {
+                console.log({ 'loaded:': err });
+                this.releaseLock();
+            }
         });
+        this.dataStore.loadDatabase()
+    }
+    private releaseLock() {
+        console.log('userdb unlocked');
+        this.unlock();
     }
     private createLock() {
+        console.log('userdb locked');
         this.unlock = () => { throw new Error('should not happen'); };
         this.lock = new Promise((resolve) => {
             this.unlock = () => resolve();
         });
         return this.unlock;
     }
-    private unlock: () => void;
-    private lock: Promise<any>;
-    private dataStore: any;
-    private users: User[];
-    getUser(userId: number): Promise<User> {
-        const user = this.lock.then((() => <User>(this.users.filter(user => user.userId === userId)[0]) ||
-            new Promise((resolve) => resolve(<User>{
-                preferedModes: ['msa', 'therm'],
-                userId,
-                autoSend: true
-            }))));
-        return user.then(userObj => {
-            if (!Array.isArray(userObj.preferedModes)) {
-                userObj.preferedModes = ['msa', 'therm'];
-            }
-            return userObj;
-        })
+    private async  createUserInDB(user: User): Promise<User> {
+        return this.lock.then(() => new Promise<User>((resolve, reject) => this.dataStore.insert(user,
+            (err: Error) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve(user);
+            })));
     }
-    updateUser(changedUser: User): Promise<void> {
-        return this.lock.then(() => {
-            const idx = this.users.findIndex(user => user.userId === changedUser.userId);
-            this.users[idx] = changedUser;
-        });
+    private async  readUserFromDB(userId: number): Promise<User> {
+        return this.lock.then(() => new Promise<User>((resolve, reject) => this.dataStore.findOne({ "userId": userId },
+            (err: Error, data: User) => {
+                console.log({ err, data });
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve(data);
+            })));
+    }
+    private async updateUserInDB(user: User) {
+        return this.lock.then(() => new Promise((resolve, reject) => this.dataStore.update({ "userId": user.userId }, user, {},
+            (err: Error, numReplaced: any) => {
+                console.log({ err, numReplaced });
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve(numReplaced);
+            })));
+    }
+    public async  getUser(userId: number): Promise<User> {
+        let user: User = await this.readUserFromDB(userId);
+        if (user === undefined || user === null) {
+            user = await this.createUserInDB({ userId,showDetails:false, preferedModes: ['msa', 'therm'], autoSend: true });
+        }
+        if (!Array.isArray(user.preferedModes)) {
+            user.preferedModes = ['msa', 'therm'];
+        }
+        console.log(user);
+        return user;
+    }
+    public async  updateUser(changedUser: User): Promise<void> {
+        await this.updateUserInDB(changedUser);;
     }
 }
