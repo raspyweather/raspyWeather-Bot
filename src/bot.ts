@@ -3,16 +3,18 @@ const Telegraf = require('telegraf');
 const child_process = require('child_process');
 import config from './config';
 import { FileDate } from "./FileDate";
-import { UserService } from "./userservice";
+import { UserService, User } from "./userservice";
 import { ImageCollection } from "./imageCollection";
-
+import { ImageInfo } from "./ImageInfo";
+const Extra = require('telegraf/extra')
 const dataService = new DataService();
-const userService = new UserService();
-const fs = require('fs');
+const userService = UserService.create();
 const bot = new Telegraf(config.botToken);
-const stopMsg = "Really? I thought we were friends :(";
-const startMsg = "Hello, I'm the raspyweather bot!";
-const audioPath = "/FTP/wxotimg/audio/";
+
+interface ParamterCollection {
+    images: ImageCollection,
+    user: User
+}
 
 
 bot.telegram.getMe().then((botInfo: any) => {
@@ -20,36 +22,33 @@ bot.telegram.getMe().then((botInfo: any) => {
     console.log("\nInitialized" + botInfo.username + "\n");
 });
 
-function logMsg(ctx: any) {
-    //log messages.
-    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id === ctx.chat.id ? ctx.from : {
-        from: ctx.from,
-        chat: ctx.chat
-    }) + "\n\n");
-    console.log('\n< ' + ctx.message.text + ' ' + JSON.stringify(ctx.from.id === ctx.chat.id ? ctx.from : {
-        from: ctx.from,
-        chat: ctx.chat
-    }));
-    console.log('\n\n');
+async function log(func: (ctx: any, parameters: ParamterCollection) => Promise<void>): Promise<(ctx: any, parameters: ParamterCollection) => Promise<void>> {
+    return async (ctx) => {
+        try {
+            console.log('\n< ' + JSON.stringify({
+                'ctxChat': ctx.chat, 'ctxFrom': ctx.from, 'ctxM': ctx.message
+            }) + "\n\n");
+            const images = await dataService.getImages();
+            const user = await userService.getUser(ctx.chat.id);
+            await func(ctx, <ParamterCollection>{ images, user });
+        }
+        catch (e) {
+            console.error(e);
+        }
+
+    };
 }
 
-function logOutMsg(ctx: any, text: string) {
-    //log replies
-    console.log('\n> ' + {
-        id: ctx.chat.id
-    } + " " + text);
-    console.log('\n\n');
-}
 
 function logProcessResult(ctx: any) {
-    return (err: any, stdout: any) => {
+    return log(async (err: any, stdout: any) => {
         if (err !== undefined && err !== null) {
-            ctx.reply('ERROR' + err);
+            await ctx.reply('ERROR' + err);
         }
         if (stdout && stdout !== null) {
-            ctx.reply(stdout);
+            await ctx.reply(stdout);
         }
-    };
+    });
 }
 function setupMonitorCommands() {
     const publicCommands = [
@@ -88,63 +87,132 @@ function setupMonitorCommands() {
     ];
 
     publicCommands.forEach(command =>
-        bot.command(command.name, (ctx: any) => child_process.exec(command.command, logProcessResult(ctx))));
+        bot.command(command.name, log(async (ctx: any) => child_process.exec(command.command, logProcessResult(ctx)))));
     adminCommands.forEach(command =>
-        bot.command(command.name, (ctx: any) => {
+        bot.command(command.name, log(async (ctx: any) => {
             if (ctx.from.id === config.adminChatId) {
                 child_process.exec(command.command, logProcessResult(ctx));
             }
-        }));
-    textCommands.forEach(command =>
-        bot.command(command.name, (ctx: any) => ctx.reply(command.message)));
+        })));
+    textCommands.forEach(command => bot.command(command.name, log(async (ctx: any) => ctx.reply(command.message))));
     console.log('commands set up');
 }
 
 
-bot.command('get', (ctx: any) => {
-    logMsg(ctx);
-    dataService.getImages().then(images => {
-        const newestDate = images.getNewestDate();
-        ctx.replyWithMarkdown("Latest Satellite pass:\n```" + ((newestDate !== undefined) ? newestDate.getIdentifier() : "no dates available") + "```");
-    });
-});
-bot.command('getTodaysImages', (ctx: any) => {
-    logMsg(ctx);
-    dataService.getImages().then(images => {
+bot.command('getDates', log(async (ctx: any, par: ParamterCollection) => {
+    const newestDate = par.images.getNewestDate();
+    console.log("Latest Satellite pass:\n```" + ((newestDate !== undefined) ? newestDate.toHumanReadableDate() : "no dates available") + "```");
+    await ctx.replyWithMarkdown("Latest Satellite pass:\n```" + ((newestDate !== undefined) ? newestDate.toHumanReadableDate() : "no dates available") + "```");
+}));
+bot.command('getTodaysImages',
+    log(async (ctx: any, par: ParamterCollection) =>
+        Promise.all(par.images.getDatesSameDay(FileDate.now()).map(
+            date => sendImages(par.images, ctx, FileDate.fromIdentifier(date), par.user.preferedModes, par.user.showDetails))).then(() => { })
+    ));
 
-        const dates = images.getDatesSameDay(FileDate.now());
-
-        //    ctx.reply(datesSince.map(date => date.getIdentifier()).reduce((prev, current) => current + '\n' + prev, ''));
-    });
-});
-function getImage(images: ImageCollection, ctx: any, date: FileDate, modes: string[]) {
-    const replyImages = images.getImageForFlight(date, modes);
-    replyImages.forEach(image => {
-        ctx.replyWithPhoto({ url: image.imageUrl },
-            {
-                caption: image.satelliteName + "\n" + image.date.getIdentifier() + "\n" + image.imageMode
-            });
-    });
+function imageInfoToString(imageInfo: ImageInfo) {
+    return `Satellite:\t${imageInfo.satelliteName}
+Date:\t${imageInfo.date.toHumanReadableDate()}
+Mode:\t${imageInfo.imageMode}`;
 }
-bot.command('getImages', (ctx: any) => {
-    logMsg(ctx);
-    dataService.getImages().then(images =>
-        userService.getUser(ctx.user.id).then(user => {
-            const newestDate = images.getNewestDate();
-            if (newestDate === undefined) { return; }
-            getImage(images, ctx, newestDate, user.preferedModes);
+async function sendImages(images: ImageCollection, ctx: any, date: FileDate, modes: string[], useDetail: boolean = false) {
+    const replyImages = images.getImageForFlight(date, modes);
+    console.log(replyImages);
+    if (useDetail) {
+        await Promise.all(replyImages.map(image => {
+            ctx.replyWithPhoto(image.imageUrl, {
+                caption: imageInfoToString(image)
+            });
         }));
-});
-bot.command('getAllImages', (ctx: any) => {
-    logMsg(ctx);
-    dataService.getImages().then(images => {
-        images.getImageForFlight(images.getNewestDate() || FileDate.now(), []).forEach(image =>
-            ctx.replyWithPhoto({ url: image.imageUrl },
-                {
-                    caption: image.satelliteName + "\n" + image.date.getIdentifier() + "\n" + image.imageMode
-                }));
+    } else {
+        const stuff = replyImages.map(image => {
+            return {
+                type: 'photo',
+                url: image.imageUrl,
+                media: image.imageUrl,
+                caption: imageInfoToString(image)
+            }
+        });
+        const arrays = [];
+        while (stuff.length > 10) {
+            arrays.push(stuff.splice(stuff.length - 10, stuff.length));
+        }
+        if (stuff.length > 0) { arrays.push(stuff); }
+        console.log(stuff);
+        await Promise.all(arrays.map(image => ctx.replyWithMediaGroup(image)));
+    }
+    console.log("images sent");
+}
+
+
+
+function setupConfigurationCommands() {
+    const makeButtons = (modes: string[], user: User) =>
+        Extra.HTML().markup((m: any) => m.inlineKeyboard([m.callbackButton('Clear', 'clearSelectMessage'),
+        ...modes.map(mode => m.callbackButton(((user.preferedModes.indexOf(mode) > -1) ? "✅ " : "") + mode, 'modeSelect_' + mode))
+        ], { columns: 3 }));
+
+    const makeSelectionText = (modes: string[]) => `Please select your prefered modes.\n Currently selected: ${modes.join(',') || 'none'};`;
+
+    bot.command('select', log(async (ctx: any, par: ParamterCollection) => {
+        const modes = par.images.getImageModes();
+        const buttons = makeButtons(modes, par.user);
+        await ctx.reply(makeSelectionText(par.user.preferedModes), buttons);
+    }));
+    bot.command('setDetailLevel', log(async (ctx: any, par: ParamterCollection) => {
+        const currentLevel = par.user.showDetails;
+        await ctx.reply(`You can set now the way this bot delivers images to you. You can decide whether you want the bot using mediagroups or dedicated messages.\nYour current selection is: ${(currentLevel) ? '🌄Dedicated Photos' : '📒Album'}`,
+            Extra.HTML().markup((m: any) => m.inlineKeyboard([
+                m.callbackButton('Albums', 'setDetailLevel_Album'),
+                m.callbackButton('Dedicated Photo', 'setDetailLevel_Dedicated')
+            ], { columns: 2 })));
+    }));
+    bot.action(/setDetailLevel_.+/, log(async (msg: any, par: ParamterCollection) => {
+        let detailLevel = msg.callbackQuery.data.replace('setDetailLevel_', '');
+        if (detailLevel === 'Dedicated') {
+            par.user.showDetails = true;
+        }
+        if (detailLevel === 'Album') {
+            par.user.showDetails = false;
+        }
+        await userService.updateUser(par.user);
+        await msg.deleteMessage();
+    }));
+    bot.action(/clearSelectMessage.+/, async (msg: any) => {
+        try {
+            await msg.deleteMessage();
+        }
+        catch (e) {
+            console.error(e);
+        }
     });
-});
+    bot.action(/modeSelect_.+/, log(async (msg: any, par: ParamterCollection) => {
+        let user = par.user;
+        let modeStr = msg.callbackQuery.data.replace('modeSelect_', '');
+        if (user.preferedModes.indexOf(modeStr) > -1) {
+            user.preferedModes = user.preferedModes.filter(x => x != modeStr);
+        }
+        else {
+            user.preferedModes.push(modeStr);
+        }
+        const modes = (await dataService.getImages()).getImageModes();
+        await userService.updateUser(user);
+        user = await userService.getUser(msg.chat.id);
+        await msg.editMessageText(makeSelectionText(user.preferedModes), makeButtons(modes, user));
+    }));
+}
+
+
+bot.command('getImages', log(async (ctx: any, par: ParamterCollection) => {
+    const newestDate = await par.images.getNewestDate();
+    if (newestDate === undefined) { console.log('no date available'); return; }
+    await sendImages(par.images, ctx, newestDate, par.user.preferedModes);
+}));
+bot.command('getAllImages', log(async (ctx: any, par: ParamterCollection) => {
+    const newestDate = par.images.getNewestDate();
+    if (newestDate === null || newestDate === undefined) { console.log('no dates available'); return; }
+    await sendImages(par.images, ctx, newestDate, [], par.user.showDetails);
+}));
 
 const reloadTime = 100000;
 function startup() {
@@ -169,4 +237,5 @@ function reload() {
 }
 
 setupMonitorCommands();
+setupConfigurationCommands();
 startup();
