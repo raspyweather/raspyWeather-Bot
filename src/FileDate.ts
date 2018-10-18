@@ -23,6 +23,14 @@ export class FileDate {
             Number.parseInt(fileDateIdentifier.substr(10, 2), 10));
     }
 
+    public toHumanReadableDate() {
+        return this.year.toString().padStart(4, '0') + '-' +
+            this.month.toString().padStart(2, '0') + '-' +
+            this.day.toString().padStart(2, '0') + ' ' +
+            this.hour.toString().padStart(2, '0') + ':' +
+            this.minute.toString().padStart(2, '0');
+    }
+
     public getIdentifier(): string {
         return this.year.toString().padStart(4, '0') +
             this.month.toString().padStart(2, '0') +
