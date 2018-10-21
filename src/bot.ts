@@ -148,11 +148,11 @@ async function sendImages(images: ImageCollection, user: User, date: FileDate, m
 
 function setupConfigurationCommands() {
     const makeButtons = (modes: string[], user: User) =>
-        Extra.HTML().markup((m: any) => m.inlineKeyboard([m.callbackButton('Finish', 'clearSelectMessage_mode'),
+        Extra.HTML().markup((m: any) => m.inlineKeyboard([m.callbackButton('🏁 Finish', 'clearSelectMessage_mode'),
         ...modes.map(mode => m.callbackButton(((user.preferedModes.indexOf(mode) > -1) ? "✅ " : "") + mode, 'modeSelect_' + mode))
         ], { columns: 3 }));
 
-    const makeSelectionText = (modes: string[]) => `Please select your prefered modes.\n Currently selected: ${modes.join(',') || 'none'};`;
+    const makeSelectionText = (modes: string[]) => `Please select your prefered modes.\n Currently selected: ${modes.join(',') || 'none'}`;
 
     bot.command('select', log(async (ctx: any, par: ParamterCollection) => {
         const modes = par.images.getImageModes();
@@ -210,7 +210,7 @@ bot.command('getAllImages', log(async (ctx: any, par: ParamterCollection) => {
     await sendImages(par.images, par.user, newestDate, [], par.user.showDetails);
 }));
 
-const reloadTime = 100000;
+const reloadTime = 60*10*1000;
 function startup() {
     //wait until DB got updated before starting the bot
     console.log("updating DB.");
